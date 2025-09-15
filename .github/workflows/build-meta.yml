@@ -1,0 +1,61 @@
+name: Build TFT Meta Snapshot
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 * * * *"  # hourly
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # Masters+ NA
+          - region: AMERICAS
+            platform: NA1
+            tier: MASTER
+          # Uncomment to expand coverage fast:
+          # - region: EUROPE
+          #   platform: EUW1
+          #   tier: MASTER
+          # - region: ASIA
+          #   platform: KR
+          #   tier: MASTER
+          # DIAMOND example:
+          # - region: AMERICAS
+          #   platform: NA1
+          #   tier: DIAMOND
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - name: Make .env
+        run: |
+          cp .env.example .env
+          sed -i "s|replace_me|${{ secrets.RIOT_API_KEY }}|g" .env
+          echo "PLATFORM=${{ matrix.platform }}" >> .env
+          echo "REGION=${{ matrix.region }}" >> .env
+          echo "TIER=${{ matrix.tier }}" >> .env
+
+      - name: Run pipeline
+        run: npm start
+
+      - name: Commit updated data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/*.json
+          git commit -m "Update snapshot (${{ matrix.platform }} / ${{ matrix.tier }})" || echo "No changes"
+          git push
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: top-comps-${{ matrix.platform }}-${{ matrix.tier }}
+          path: data/top_comps_*_${{ matrix.platform }}.json
